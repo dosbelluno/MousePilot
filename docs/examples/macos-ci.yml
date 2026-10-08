@@ -1,0 +1,44 @@
+name: macOS CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build application
+        env:
+          MOUSEPILOT_SIGN_IDENTITY: "-"
+        run: ./scripts/build-app.sh
+
+      - name: Verify packaged application
+        shell: bash
+        run: |
+          set -euo pipefail
+          mousepilot_archive_dir="$(mktemp -d "${TMPDIR:-/tmp}/MousePilot-verify.XXXXXX")"
+          trap 'rm -rf -- "$mousepilot_archive_dir"' EXIT
+          ditto -x -k build/MousePilot-Gestures.zip "$mousepilot_archive_dir"
+          codesign --verify --strict "$mousepilot_archive_dir/MousePilot-Gestures.app"
+          plutil -lint "$mousepilot_archive_dir/MousePilot-Gestures.app/Contents/Info.plist"
